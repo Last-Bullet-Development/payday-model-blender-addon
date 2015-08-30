@@ -190,6 +190,8 @@ class Pd2ModelImport:
                 uvs = geometry[7]
                 normals = geometry[8]
                 colors = geometry[9]
+                weights = geometry[10]
+                
                 
                 rotation_matrix = Matrix((
                   (model_data[2][4][0],model_data[2][4][4],model_data[2][4][8],model_data[2][4][12]),
@@ -221,7 +223,7 @@ class Pd2ModelImport:
                     
                   marerial_indecies = model_data[7]
                 
-                self.build_model(model_id, verts, uvs, normals, faces, colors, obj_parent, loc, rot, material_names, marerial_indecies)
+                self.build_model(model_id, verts, uvs, normals, faces, colors, weights, obj_parent, loc, rot, material_names, marerial_indecies)
             elif section[1] == self.object3D_tag:
                 object3D_data = parsed_sections[section[2]]
                 obj_name = self.dictionary.get(object3D_data[2], str(object3D_data[2]))
@@ -330,6 +332,7 @@ class Pd2ModelImport:
         uvs = []
         normals = []
         colors = []
+        weights = []
         #print('len(headers) = ' + str(len(headers)))
         for header in headers:
             if header[1] == 1:
@@ -349,12 +352,17 @@ class Pd2ModelImport:
                 for x in range(count1):
                     colors.append(unpack("<BBBB", self.rao(cur_offset, 4)))
                     cur_offset += 4
+            elif header[1] == 17:
+                for x in range(count1):
+                    weights.append(unpack("<fff", self.rao(cur_offset, 12)))
+                    cur_offset += 12
+            
             else:
                 #print('header[1] = ' + str(header[1]))
                 #print('size_index[header[0]] = ' + str(size_index[header[0]]))
                 cur_offset += size_index[header[0]] * count1
         
-        return ('Geometry', section_id, count1, count2, headers, count1*calc_size, verts, uvs, normals, colors)
+        return ('Geometry', section_id, count1, count2, headers, count1*calc_size, verts, uvs, normals, colors, weights)
 
     def parse_topology(self, offset, size, section_id):
         cur_offset = offset
@@ -464,7 +472,7 @@ class Pd2ModelImport:
             #bpy.data.objects[name]
             
             
-    def build_model(self, name, verts, uvs, normals, faces, colors, parentID, loc, rot, material_names, material_indecies):
+    def build_model(self, name, verts, uvs, normals, faces, colors, weights, parentID, loc, rot, material_names, material_indecies):
             mesh = bpy.data.meshes.new(name)
             #mesh.from_pydata(verts, [], faces)
             bm = bmesh.new()
@@ -502,6 +510,43 @@ class Pd2ModelImport:
               for face in bm.faces:        # Iterate over all of the object's faces
                 face.material_index = 0 # Assing random material to face
                  
+            #Weights
+            if len(weights) > 0:
+                dvert_lay = bm.verts.layers.deform.verify()
+                
+                for x in range(len(verts)):
+                    dvert = bm.verts[x][dvert_lay]
+
+                    dvert[0] = weights[x][0]
+                    dvert[1] = weights[x][1]
+                    dvert[2] = weights[x][2]
+                    
+                    #if group_index in dvert:
+                    #    print("Weight %f" % dvert[group_index])
+                    #else:
+                    #    print("Setting Weight")
+                    #    dvert[0] = weights[x][0]
+                
+                '''
+                ob.vertex_groups.new("Bone 1")
+                ob.vertex_groups.new("Bone 2")
+                ob.vertex_groups.new("Bone 3")
+                
+                b1_id = ob.vertex_groups["Bone 1"].index
+                b2_id = ob.vertex_groups["Bone 2"].index
+                b3_id = ob.vertex_groups["Bone 3"].index
+                
+                for grp in ob.vertex_groups:
+                    grp.add(range(0,len(weights)), 1.0, 'REPLACE')
+                
+                for x in range(len(verts)):
+                    bm.verts[x].groups[b1_id].weight = weights[x][0]
+                    bm.verts[x].groups[b2_id].weight = weights[x][1]
+                    bm.verts[x].groups[b3_id].weight = weights[x][2]
+                    
+            '''
+            
+            
                   
             bm.to_mesh(mesh)
             ob = bpy.data.objects.new(name, mesh)
@@ -510,6 +555,11 @@ class Pd2ModelImport:
             ob.rotation_quaternion = rot
             ob_mesh = ob.data
             
+            if len(weights) > 0:
+                ob.vertex_groups.new("Bone 1")
+                ob.vertex_groups.new("Bone 2")
+                ob.vertex_groups.new("Bone 3")
+                
             
             #print("len(colors)=" + str(len(colors)))
             if len(colors) > 0:
@@ -522,7 +572,8 @@ class Pd2ModelImport:
                   for loop_index in poly.loop_indices:
                     loop_vert_index = mesh.loops[loop_index].vertex_index
                     color_map.data[loop_index].color = [ colors[loop_vert_index][2]/255.0, colors[loop_vert_index][1]/255.0, colors[loop_vert_index][0]/255.0 ]
-              
+            
+            #UVs
             if len(uvs) > 0:
               for poly in ob_mesh.polygons:
                     #print("Polygon", poly.index, "from loop index", poly.loop_start, "and length", poly.loop_total)
