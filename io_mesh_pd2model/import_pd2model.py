@@ -38,19 +38,25 @@ class Pd2ModelImport:
     bones_tag                         = int('2EB43C77', 16)    # Bones
 	# section_unknown1			      = int('803BA1FF', 16)    # ?   Ex: in str_vehicle_van_player.model
 	# section_unknown2                = int('8C12A526', 16)    # ?   Ex: in str_vehicle_van_player.model
-  
-    hllDll = ctypes.CDLL("D:\\Repositories\\Mercurial\\payday-2-modding-information\\model tool\\PD2ModelParser\\PD2ModelParser\\bin\\Release\\Hash64.dll")
-
+	
+    hllDll = None
+    hllDllPath = "HashDLLPath"
+    try:
+        hllDll = ctypes.CDLL(hllDllPath)
+    except:
+        raise NameError("Could not load Hash64 dll %s" % hllDllPath)
+	
     def __init__(self):
         #constructor, do initialisation and stuff
         self.buff=''
         self.dictionary = {} #Hashlist
         self.object_file = ''
         self.materials = {} #Materials by key
-        self.assets_path = 'S:\\Steam\\steamapps\\common\\PAYDAY 2\\assets\\extract\\'
+        self.assets_path = 'D:\\PD2 Extract\\'
         #c:\\Program Files (x86)\\Steam\\SteamApps\\common\\PAYDAY The Heist\\assets\\extract\\
         #c:\\Program Files (x86)\\Steam\\SteamApps\\common\\PAYDAY 2\\assets\\extract\\
-        with open("D:\\Repositories\\Mercurial\\payday-2-modding-information\\model tool\\PD2ModelParser\\PD2ModelParser\\bin\\Release\\hashes.txt") as f:
+        HashlistPath = "Hashlist Path"
+        with open(HashlistPath) as f:
           lines = f.read().splitlines() 
           for line in lines:
               hashcode = int(self.get_hash(str(line)))
@@ -70,23 +76,50 @@ class Pd2ModelImport:
         
         model_path = os.path.splitext(file_path)[0]
         
-        objectData = parse(model_path + '.object')
+        objectData = None
+        try:
+            objectData = parse(model_path + '.object')
+        except:
+            print("Could not load object, trying .object.xml")
+            try:
+                objectData = parse(model_path + '.object.xml')
+            except:
+                raise NameError("Could not load object %s" % model_path)
+        
         diesel = objectData.getElementsByTagName("diesel")
         mats_path = diesel[0].getAttribute("materials")
         #Can read enabled/disabled/effects later from object file
         objectData.unlink()
         
-        mat_configData = parse(self.assets_path + mats_path + '.material_config')
+        mat_configData = None
+        try:
+            mat_configData = parse(self.assets_path + mats_path + '.material_config')
+        except:
+            print("Could not load material config, trying .material_config.xml")
+            try:
+                mat_configData = parse(self.assets_path + mats_path + '.material_config.xml')
+            except:
+                raise NameError("Could not load material_config %s" % mats_path)
+        
+        
+			
         mat_config_materials = mat_configData.getElementsByTagName("material")
         for mat in mat_config_materials:
           mat_name = mat.getAttribute("name")
           mat_textures = mat.getElementsByTagName("diffuse_texture")
           for mat_texture in mat_textures:
+            realpath = self.assets_path + mat_texture.getAttribute("file")
             try:
-                img = bpy.data.images.load(self.assets_path + mat_texture.getAttribute("file") + ".texture")
-                self.materials[mat_name] = self.assets_path + mat_texture.getAttribute("file") + ".texture"
+                img = bpy.data.images.load(realpath + ".texture")
+                self.materials[mat_name] = realpath + ".texture"
             except:
-                raise NameError("Cannot load image %s" % realpath)
+                print("Could not load texture " + realpath + " attempting with .texture.dds extension")
+                try:
+                    img = bpy.data.images.load(realpath + ".texture.dds")
+                    self.materials[mat_name] = realpath + ".texture.dds"
+                except:
+                    raise NameError("Cannot load image %s" % realpath)
+
             cTex = bpy.data.textures.new(mat_name, type = 'IMAGE')
             cTex.image = img
             # Create material
