@@ -11,7 +11,7 @@ import os
 import bpy
 import bmesh
 import ctypes
-from mathutils import Matrix
+from mathutils import Matrix, Vector, Quaternion
 from bmesh.types import BMVert
 from struct import unpack
 
@@ -20,8 +20,8 @@ from xml.dom.minidom import Node
 
 class Pd2ModelImport:
 
-	# Definition of sections type/tag :
-	
+    # Definition of sections type/tag :
+    
     animation_data_tag                = int('5DC011B8', 16)    # Animation data
     author_tag                        = int('7623C465', 16)    # Author tag
     material_group_tag                = int('29276B1D', 16)    # Material Group
@@ -36,32 +36,54 @@ class Pd2ModelImport:
     quatBezRotationController_tag     = int('197345A5', 16)    # QuatBezRotationController
     skinbones_tag                     = int('65CC1825', 16)    # SkinBones
     bones_tag                         = int('2EB43C77', 16)    # Bones
-	# section_unknown1			      = int('803BA1FF', 16)    # ?   Ex: in str_vehicle_van_player.model
-	# section_unknown2                = int('8C12A526', 16)    # ?   Ex: in str_vehicle_van_player.model
-	
+    # section_unknown1                  = int('803BA1FF', 16)    # ?   Ex: in str_vehicle_van_player.model
+    # section_unknown2                = int('8C12A526', 16)    # ?   Ex: in str_vehicle_van_player.model
+    
+    #Variables
+    hllDllPath = "D:\\Repositories\\Mercurial\\payday-2-modding-information\\model tool\\PD2ModelParser\\PD2ModelParser\\bin\\Release\\Hash64.dll"
+    assets_path = "S:\\Steam\\steamapps\\common\\PAYDAY 2\\assets\\extract\\"
+    HashlistPath = "D:\\Repositories\\Mercurial\\payday-2-modding-information\\model tool\\PD2ModelParser\\PD2ModelParser\\bin\\Release\\hashes.txt"
+    
+    
     hllDll = None
-    hllDllPath = "HashDLLPath"
-    try:
-        hllDll = ctypes.CDLL(hllDllPath)
-    except:
-        raise NameError("Could not load Hash64 dll %s" % hllDllPath)
-	
-    def __init__(self):
+    
+    
+    armatureObj = None
+    armatureName = None
+    useArmature = False
+    
+    parsed_sections = {}
+    
+    def __init__(self, filepath="",
+        dllPath = "D:\\Repositories\\Mercurial\\payday-2-modding-information\\model tool\\PD2ModelParser\\PD2ModelParser\\bin\\Release\\Hash64.dll",
+        assetsPath = "S:\\Steam\\steamapps\\common\\PAYDAY 2\\assets\\extract\\",
+        hashlistPath = "D:\\Repositories\\Mercurial\\payday-2-modding-information\\model tool\\PD2ModelParser\\PD2ModelParser\\bin\\Release\\hashes.txt"):
         #constructor, do initialisation and stuff
+        #self.hllDllPath = dllPath
+        #self.assets_path = assetsPath
+        #self.HashlistPath = hashlistPath
+        
         self.buff=''
         self.dictionary = {} #Hashlist
         self.object_file = ''
         self.materials = {} #Materials by key
-        self.assets_path = 'D:\\PD2 Extract\\'
         #c:\\Program Files (x86)\\Steam\\SteamApps\\common\\PAYDAY The Heist\\assets\\extract\\
         #c:\\Program Files (x86)\\Steam\\SteamApps\\common\\PAYDAY 2\\assets\\extract\\
-        HashlistPath = "Hashlist Path"
-        with open(HashlistPath) as f:
+        
+        #Declare hash64.dll
+        try:
+            self.hllDll = ctypes.CDLL(self.hllDllPath)
+        except:
+            raise NameError("Could not load Hash64 dll %s" % self.hllDllPath)
+        
+        #Populate hashlist
+        with open(self.HashlistPath) as f:
           lines = f.read().splitlines() 
           for line in lines:
               hashcode = int(self.get_hash(str(line)))
               self.dictionary[hashcode] = line
               #print("[" + str(hashcode) + "] = " + self.dictionary[hashcode])
+
 
     def read(self, file_path):
 
@@ -102,7 +124,7 @@ class Pd2ModelImport:
                 raise NameError("Could not load material_config %s" % mats_path)
         
         
-			
+            
         mat_config_materials = mat_configData.getElementsByTagName("material")
         for mat in mat_config_materials:
           mat_name = mat.getAttribute("name")
@@ -142,65 +164,64 @@ class Pd2ModelImport:
         # print('section count (1) : %d' % section_count)
 
         sections = self.parse_file()
-        parsed_sections = {}
 
         for section in sections:
 
             if section[1] == self.animation_data_tag:
                 #print("animation_data_tag")
-                parsed_sections[section[2]] = self.parse_animation_data(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_animation_data(section[0]+12, section[3], section[2])
 
             elif section[1] == self.author_tag:
                 #print("author_tag")
-                parsed_sections[section[2]] = self.parse_author(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_author(section[0]+12, section[3], section[2])
 
             elif section[1] == self.material_group_tag:
                 #print("material_group_tag")
-                parsed_sections[section[2]] = self.parse_material_group(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_material_group(section[0]+12, section[3], section[2])
 
             elif section[1] == self.material_tag:
                 #print("material_tag")
-                parsed_sections[section[2]] = self.parse_material(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_material(section[0]+12, section[3], section[2])
 
             elif section[1] == self.object3D_tag:
                 #print("object3D_tag")
-                parsed_sections[section[2]] = self.parse_object3d(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_object3d(section[0]+12, section[3], section[2])
 
             elif section[1] == self.geometry_tag:
                 #print("geometry_tag")
-                parsed_sections[section[2]] = self.parse_geometry(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_geometry(section[0]+12, section[3], section[2])
 
             elif section[1] == self.model_data_tag:
                 #print("geometry_tag")
-                parsed_sections[section[2]] = self.parse_model_data(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_model_data(section[0]+12, section[3], section[2])
 
             elif section[1] == self.topology_tag:
                 #print("topology_tag")
-                parsed_sections[section[2]] = self.parse_topology(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_topology(section[0]+12, section[3], section[2])
  
             elif section[1] == self.passthroughGP_tag:
                 #print("passthroughGP_tag")
-                parsed_sections[section[2]] = self.parse_passthrough_gp(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_passthrough_gp(section[0]+12, section[3], section[2])
 
             elif section[1] == self.topologyIP_tag:
                 #print("topologyIP_tag")
-                parsed_sections[section[2]] = self.parse_topology_ip(section[0]+12, section[3], section[2])
+                self.parsed_sections[section[2]] = self.parse_topology_ip(section[0]+12, section[3], section[2])
 
             elif section[1] == self.quatLinearRotationController_tag:
                 print("quatLinearRotationController_tag    /!\    No parser defined   /!\ ")
-                #parsed_sections[section[2]] =
+                #self.parsed_sections[section[2]] =
 
             elif section[1] == self.quatBezRotationController_tag:
                 print("quatBezRotationController_tag    /!\    No parser defined   /!\ ")
-                #parsed_sections[section[2]] =
+                #self.parsed_sections[section[2]] =
 
             elif section[1] == self.skinbones_tag:
-                print("skinbones_tag    /!\    No parser defined   /!\ ")
-                #parsed_sections[section[2]] =
+                #print("skinbones_tag")
+                self.parsed_sections[section[2]] = self.parse_skinbones(section[0]+12, section[3], section[2])
 
             elif section[1] == self.bones_tag:
                 print("bones_tag    /!\    No parser defined   /!\ ")
-                #parsed_sections[section[2]] =
+                #self.parsed_sections[section[2]] =
 
             else:
                 print("Unknown section tag %d" % section[1] )
@@ -208,22 +229,24 @@ class Pd2ModelImport:
 
 
         for section in sections:
-
+            
             if section[1] == self.model_data_tag:
-                model_data = parsed_sections[section[2]]
+                model_data = self.parsed_sections[section[2]]
                 if model_data[3] == 6:
                     continue
                 
+                #('Geometry', section_id, count1, count2, headers, count1*calc_size, verts, uvs, normals, colors, weights, weight_groups)
                 model_id = self.dictionary.get(model_data[2][1], str(model_data[2][1]))
                 #model_id = "model-%x" % model_data[2][2]
-                geometry = parsed_sections[parsed_sections[model_data[4]][2]]
-                topology = parsed_sections[parsed_sections[model_data[4]][3]]
+                geometry = self.parsed_sections[self.parsed_sections[model_data[4]][2]]
+                topology = self.parsed_sections[self.parsed_sections[model_data[4]][3]]
                 faces = topology[4]
                 verts = geometry[6]
                 uvs = geometry[7]
                 normals = geometry[8]
                 colors = geometry[9]
                 weights = geometry[10]
+                weight_groups = geometry[11]
                 
                 
                 rotation_matrix = Matrix((
@@ -236,7 +259,7 @@ class Pd2ModelImport:
                 loc = model_data[2][5]
                 
                 if model_data[2][6] > 0:
-                    obj_parent_data = parsed_sections[model_data[2][6]]
+                    obj_parent_data = self.parsed_sections[model_data[2][6]]
                     if obj_parent_data[0] == 'Model':
                       obj_parent_data = obj_parent_data[2]
                     
@@ -248,17 +271,20 @@ class Pd2ModelImport:
                 marerial_indecies = None
                 if model_data[3] == 3:
                   mat_group_sec_id = model_data[8]
-                  mat_group_sec_data = parsed_sections[mat_group_sec_id]
+                  mat_group_sec_data = self.parsed_sections[mat_group_sec_id]
                   for item in mat_group_sec_data[3]:
-                    mat_sec_data = parsed_sections[item]
+                    mat_sec_data = self.parsed_sections[item]
                     if self.dictionary.get(mat_sec_data[2], None) != None:
                       material_names.append(self.dictionary.get(mat_sec_data[2], None))
                     
                   marerial_indecies = model_data[7]
                 
-                self.build_model(model_id, verts, uvs, normals, faces, colors, weights, obj_parent, loc, rot, material_names, marerial_indecies)
+                #('Model', section_id, object3d, version, a, b, count2, items2, material_group_section_id, unknown10, bounds_min, bounds_max, unknown11, unknown12, unknown13, skinbones_ID)
+                skinbones_ID = model_data[15]
+                
+                self.build_model(model_id, verts, uvs, normals, faces, colors, weights, weight_groups, obj_parent, loc, rot, material_names, marerial_indecies, skinbones_ID)
             elif section[1] == self.object3D_tag:
-                object3D_data = parsed_sections[section[2]]
+                object3D_data = self.parsed_sections[section[2]]
                 obj_name = self.dictionary.get(object3D_data[2], str(object3D_data[2]))
                 obj_position = object3D_data[6]
                 
@@ -271,10 +297,42 @@ class Pd2ModelImport:
                 #loc, rot, scale = obj_rotationMat.decompose()
                 rot = obj_rotationMat.to_quaternion()
                 
+                #Collect total rotation
+                if self.useArmature is True:
+                    totalRotations = []
+                    
+                    parID = object3D_data[7]
+                    while (parID > 0):
+                        parObj = self.parsed_sections[parID]
+                        if parObj[0] == 'Model':
+                            parObj = obj_parent_data[2]
+                        
+                        parobj_rotationMat = Matrix((
+                          (parObj[5][0],parObj[5][4],parObj[5][8],parObj[5][12]),
+                          (parObj[5][1],parObj[5][5],parObj[5][9],parObj[5][13]),
+                          (parObj[5][2],parObj[5][6],parObj[5][10],parObj[5][14]),
+                          (parObj[5][3],parObj[5][7],parObj[5][11],parObj[5][15])))
+                        
+                        totalRotations.insert(0, parobj_rotationMat.to_quaternion())
+                        
+                        #rot = rot * parobj_rotationMat.to_quaternion()
+                        
+                        parID = parObj[7]
+                    
+                    if len(totalRotations) > 0:
+                        parentRots = totalRotations[0]
+                        for x in range(len(totalRotations)):
+                            if x == 0:
+                                continue
+                            parentRots = parentRots * totalRotations[x]
+                        
+                        rot = parentRots * rot
+                        
+                
                 loc = object3D_data[6]
                 
                 if object3D_data[7] > 0:
-                    obj_parent_data = parsed_sections[object3D_data[7]]
+                    obj_parent_data = self.parsed_sections[object3D_data[7]]
                     if obj_parent_data[0] == 'Model':
                       obj_parent_data = obj_parent_data[2]
                     
@@ -285,8 +343,8 @@ class Pd2ModelImport:
                 self.build_emptyObject(obj_name, loc, rot, obj_parent)
             
         print("Import done")
-		
-		
+        
+        
     def rao(self, offset, size):
         return self.buff[offset:offset+size]
 
@@ -366,6 +424,7 @@ class Pd2ModelImport:
         normals = []
         colors = []
         weights = []
+        weight_groups = []
         #print('len(headers) = ' + str(len(headers)))
         for header in headers:
             if header[1] == 1:
@@ -389,13 +448,18 @@ class Pd2ModelImport:
                 for x in range(count1):
                     weights.append(unpack("<fff", self.rao(cur_offset, 12)))
                     cur_offset += 12
+            elif header[1] == 15:
+                for x in range(count1):
+                    weight_groups.append(unpack("<HHHH", self.rao(cur_offset, 8)))
+                    cur_offset += 8
+            
             
             else:
                 #print('header[1] = ' + str(header[1]))
                 #print('size_index[header[0]] = ' + str(size_index[header[0]]))
                 cur_offset += size_index[header[0]] * count1
         
-        return ('Geometry', section_id, count1, count2, headers, count1*calc_size, verts, uvs, normals, colors, weights)
+        return ('Geometry', section_id, count1, count2, headers, count1*calc_size, verts, uvs, normals, colors, weights, weight_groups)
 
     def parse_topology(self, offset, size, section_id):
         cur_offset = offset
@@ -422,7 +486,7 @@ class Pd2ModelImport:
         cur_offset += 12
         items = []
         for x in range(count):
-            items.append(unpack("<iii", self.rao(cur_offset, 12)))
+            items.append(unpack("<fff", self.rao(cur_offset, 12)))
             cur_offset += 12
         int_count = 64/4
         rotation_matrix = unpack("<"+int(int_count)*"f", self.rao(cur_offset, 64))
@@ -446,7 +510,7 @@ class Pd2ModelImport:
         cur_offset += 12
         items = []
         for x in range(count):
-            items.append(unpack("<iii", self.rao(cur_offset, 12)))
+            items.append(unpack("<fff", self.rao(cur_offset, 12)))
             cur_offset += 12
         int_count = 64/4
         rotation_matrix = unpack("<"+int(int_count)*"f", self.rao(cur_offset, 64))
@@ -472,40 +536,136 @@ class Pd2ModelImport:
             for x in range(count2):
                 items2.append(unpack("<iiiii", self.rao(cur_offset, 20)))
                 cur_offset += 20
-            material_group_section_id, unknown10 = unpack("<ii", self.rao(cur_offset, 8))
+            material_group_section_id, unknown10 = unpack("<II", self.rao(cur_offset, 8))
             cur_offset += 8
-            #There's more to this section...
-            #public UInt32 unknown10;
-            #public Vector3D bounds_min; // Z (max), X (low), Y (low)
-            #public Vector3D bounds_max; // Z (low), X (max), Y (max)
-            #public UInt32 unknown11;
-            #public UInt32 unknown12;
-            #public UInt32 unknown13;
-            #public UInt32 skinbones_ID;
+            bounds_min = unpack("<fff", self.rao(cur_offset, 12))
+            cur_offset += 12
+            bounds_max = unpack("<fff", self.rao(cur_offset, 12))
+            cur_offset += 12
+            unknown11, unknown12, unknown13, skinbones_ID = unpack("<IIII", self.rao(cur_offset, 16))
+            cur_offset += 16
             
-            return ('Model', section_id, object3d, version, a, b, count2, items2, material_group_section_id, unknown10)
+            return ('Model', section_id, object3d, version, a, b, count2, items2, material_group_section_id, unknown10, bounds_min, bounds_max, unknown11, unknown12, unknown13, skinbones_ID)
 
+    def parse_skinbones(self, offset, size, section_id):
+        cur_offset = offset
+        
+        bones = []
+        #Bones Object
+        bones_object_count = unpack("<i", self.rao(cur_offset, 4))[0]
+        cur_offset += 4
+        
+        for x in range(bones_object_count):
+            bone_vert_count = unpack("<i", self.rao(cur_offset, 4))[0]
+            cur_offset += 4
+            bone_verts = []
+            for y in range(bone_vert_count):
+                bone_verts.append(unpack("<I", self.rao(cur_offset, 4))[0])
+                cur_offset += 4
+            
+            bones.append((bone_vert_count, bone_verts))
+        
+        #Bones Object End
+        
+        object3D_section_id, count = unpack("<II", self.rao(cur_offset, 8))
+        cur_offset += 8
+        
+        bones_ids = []
+        for x in range(count):
+            bones_ids.append( (unpack("<i", self.rao(cur_offset, 4))[0]) ) 
+            cur_offset += 4
+        
+        bones_rotations = []
+        for x in range(count):
+            bones_rotations.append(unpack("<ffffffffffffffff", self.rao(cur_offset, 64)))
+            cur_offset += 64
+        
+        unknown_matrix = unpack("<ffffffffffffffff", self.rao(cur_offset, 64))
+        cur_offset += 64
+        
+        
+        
+        return ('SkinBones', section_id, bones, object3D_section_id, count, bones_ids, bones_rotations, unknown_matrix)
+        
     def build_emptyObject(self, name, position, rotation_matrix, parentID):
             
-            bpy.ops.object.add(type='EMPTY', view_align=False, enter_editmode=False, location=position)
+            #print('self, name, position, rotation_matrix, parentID || ' + str(self) + " " + str(name) + " " + str(position) + " " + str(rotation_matrix) + " " + str(parentID) )
             
-            bpy.context.active_object.name = name
+            if self.useArmature is True:
+                #Armature method
+                if self.armatureObj is None:
+                    bpy.ops.object.add(type='ARMATURE', enter_editmode=True, location=position)
+                    
+                    self.armatureName = name
+                    bpy.context.active_object.name = self.armatureName
+                    #bpy.data.objects[self.armatureName].rotation_mode = 'QUATERNION'
+                    #bpy.data.objects[self.armatureName].rotation_quaternion = rotation_matrix
+                    #bpy.data.objects[name].location = position
+                    #bpy.data.objects[name].rotation_quaternion = rotation_matrix
+                    #bpy.data.objects[name].show_x_ray = True
+                    #bpy.data.objects[name].show_name = True
+                    
+                    self.armatureObj = bpy.context.object
+                    return
+                    
+                bpy.ops.object.mode_set(mode='EDIT')
+                
+                newbone = self.armatureObj.data.edit_bones.new(name)
+                vec = Vector(position)
+                vec.rotate(Quaternion(rotation_matrix))
+                newbone.head = vec
+                
+                if parentID != str(0):
+                  if self.armatureObj.data.edit_bones.get(parentID) is not None:
+                    newbone.parent = self.armatureObj.data.edit_bones[parentID]
+                    newbone.use_connect = False
+                    #newbone.use_inherit_rotation = False
+                    #newbone.use_inherit_scale = False
+                    newbone.head = newbone.parent.head + newbone.head
+                    newbone.parent.tail = newbone.head
+                
+                newbone.tail = newbone.head + Vector((2.0, 2.0, 2.0))
+                
+                
+                #newbone.tail = position
+                #newbone.tail = rotation_matrix * newbone.tail
+                
+                
+                
+                bpy.ops.object.mode_set(mode='OBJECT')
+                
+                bpy.ops.object.mode_set(mode='POSE')
+                
+                #if bpy.data.objects[self.armatureName].pose.bones.get(name) is not None:
+                #    bpy.data.objects[self.armatureName].pose.bones[name].rotation_mode = 'QUATERNION'
+                #    bpy.data.objects[self.armatureName].pose.bones[name].rotation_quaternion = rotation_matrix
+                
+                bpy.ops.object.mode_set(mode='OBJECT')
+                
+                #newbone.rotation_quaternion = rotation_matrix
             
-            bpy.data.objects[name].rotation_mode = 'QUATERNION'
-            bpy.data.objects[name].location = position
-            bpy.data.objects[name].rotation_quaternion = rotation_matrix
-            #bpy.data.objects[name].show_x_ray = True
-            #bpy.data.objects[name].show_name = True
+            else:
+                #Old method
+                
+                bpy.ops.object.add(type='EMPTY', view_align=False, enter_editmode=False, location=position)
+                
+                bpy.context.active_object.name = name
+                
+                bpy.data.objects[name].rotation_mode = 'QUATERNION'
+                bpy.data.objects[name].location = position
+                bpy.data.objects[name].rotation_quaternion = rotation_matrix
+                #bpy.data.objects[name].show_x_ray = True
+                #bpy.data.objects[name].show_name = True
+                
+                
+                if parentID != str(0):
+                  if bpy.data.objects.get(parentID) is not None:
+                    bpy.data.objects[name].parent = bpy.data.objects[parentID]
+                
+                #bpy.data.objects[name]
             
             
-            if parentID != str(0):
-              if bpy.data.objects.get(parentID) is not None:
-                bpy.data.objects[name].parent = bpy.data.objects[parentID]
-            
-            #bpy.data.objects[name]
-            
-            
-    def build_model(self, name, verts, uvs, normals, faces, colors, weights, parentID, loc, rot, material_names, material_indecies):
+    def build_model(self, name, verts, uvs, normals, faces, colors, weights, weight_groups, parentID, loc, rot, material_names, material_indecies, skinbones_ID):
             mesh = bpy.data.meshes.new(name)
             #mesh.from_pydata(verts, [], faces)
             bm = bmesh.new()
@@ -514,7 +674,7 @@ class Pd2ModelImport:
 
             if hasattr(bm.verts, "ensure_lookup_table"):
                 bm.verts.ensure_lookup_table()
-				
+                
             if len(normals) > 0:
                 for x in range(len(verts)):
                     bm.verts[x].normal.x = normals[x][0]
@@ -544,40 +704,57 @@ class Pd2ModelImport:
                 face.material_index = 0 # Assing random material to face
                  
             #Weights
-            if len(weights) > 0:
-                dvert_lay = bm.verts.layers.deform.verify()
+            if skinbones_ID > 0:
+                #('SkinBones', section_id, bones, object3D_section_id, count, bones_ids, bones_rotations, unknown_matrix)
                 
-                for x in range(len(verts)):
-                    dvert = bm.verts[x][dvert_lay]
-
-                    dvert[0] = weights[x][0]
-                    dvert[1] = weights[x][1]
-                    dvert[2] = weights[x][2]
+                skinbone = self.parsed_sections[skinbones_ID]
+                
+                
+                
+                if len(weights) > 0:
+                    dvert_lay = bm.verts.layers.deform.verify()
                     
-                    #if group_index in dvert:
-                    #    print("Weight %f" % dvert[group_index])
-                    #else:
-                    #    print("Setting Weight")
-                    #    dvert[0] = weights[x][0]
-                
-                '''
-                ob.vertex_groups.new("Bone 1")
-                ob.vertex_groups.new("Bone 2")
-                ob.vertex_groups.new("Bone 3")
-                
-                b1_id = ob.vertex_groups["Bone 1"].index
-                b2_id = ob.vertex_groups["Bone 2"].index
-                b3_id = ob.vertex_groups["Bone 3"].index
-                
-                for grp in ob.vertex_groups:
-                    grp.add(range(0,len(weights)), 1.0, 'REPLACE')
-                
-                for x in range(len(verts)):
-                    bm.verts[x].groups[b1_id].weight = weights[x][0]
-                    bm.verts[x].groups[b2_id].weight = weights[x][1]
-                    bm.verts[x].groups[b3_id].weight = weights[x][2]
+                    for x in range(len(verts)):
+                        
+                        dvert = bm.verts[x][dvert_lay]
+                        
+                        vg0_candidate = self.parsed_sections[skinbone[5][int(weight_groups[x][0])]][2]
+                        vg0_name = self.dictionary.get(vg0_candidate, str(vg0_candidate))
+                        dvert[int(weight_groups[x][0])] = weights[x][0]
+                        
+                        if weight_groups[x][1] > 0:
+                            vg1_candidate = self.parsed_sections[skinbone[5][int(weight_groups[x][1])]][2]
+                            vg1_name = self.dictionary.get(vg1_candidate, str(vg1_candidate))
+                            dvert[int(weight_groups[x][1])] = weights[x][1]
+                        if weight_groups[x][2] > 0:
+                            vg2_candidate = self.parsed_sections[skinbone[5][int(weight_groups[x][2])]][2]
+                            vg2_name = self.dictionary.get(vg2_candidate, str(vg2_candidate))
+                            dvert[int(weight_groups[x][2])] = weights[x][2]
+                        
+                        #if group_index in dvert:
+                        #    print("Weight %f" % dvert[group_index])
+                        #else:
+                        #    print("Setting Weight")
+                        #    dvert[0] = weights[x][0]
                     
-            '''
+                    '''
+                    ob.vertex_groups.new("Bone 1")
+                    ob.vertex_groups.new("Bone 2")
+                    ob.vertex_groups.new("Bone 3")
+                    
+                    b1_id = ob.vertex_groups["Bone 1"].index
+                    b2_id = ob.vertex_groups["Bone 2"].index
+                    b3_id = ob.vertex_groups["Bone 3"].index
+                    
+                    for grp in ob.vertex_groups:
+                        grp.add(range(0,len(weights)), 1.0, 'REPLACE')
+                    
+                    for x in range(len(verts)):
+                        bm.verts[x].groups[b1_id].weight = weights[x][0]
+                        bm.verts[x].groups[b2_id].weight = weights[x][1]
+                        bm.verts[x].groups[b3_id].weight = weights[x][2]
+                        
+                    '''
             
             
                   
@@ -588,11 +765,20 @@ class Pd2ModelImport:
             ob.rotation_quaternion = rot
             ob_mesh = ob.data
             
-            if len(weights) > 0:
-                ob.vertex_groups.new("Bone 1")
-                ob.vertex_groups.new("Bone 2")
-                ob.vertex_groups.new("Bone 3")
+            if skinbones_ID > 0:
                 
+                skinbone = self.parsed_sections[skinbones_ID]
+                
+                for boneID in skinbone[5]:
+                    vg_candidate = self.parsed_sections[boneID][2]
+                    vg_name = self.dictionary.get(vg_candidate, str(vg_candidate))
+                    ob.vertex_groups.new(vg_name)
+                
+                #mod = bpy.data.objects['Cube'].modifiers.new(name='decimate', type='DECIMATE')
+                ob.modifiers.new(name='Armature', type='ARMATURE')
+                ob.modifiers["Armature"].object = self.armatureObj
+                ob.modifiers["Armature"].use_vertex_groups = True
+            
             
             #print("len(colors)=" + str(len(colors)))
             if len(colors) > 0:
@@ -621,9 +807,17 @@ class Pd2ModelImport:
             bpy.context.scene.objects.link(ob)
             
             if parentID != str(0):
-              if bpy.data.objects.get(parentID) is not None:
-                if bpy.data.objects[name] != bpy.data.objects[parentID]:
-                  bpy.data.objects[name].parent = bpy.data.objects[parentID]
+                
+                if self.useArmature is True:
+                    if bpy.data.objects[self.armatureName].pose.bones.get(parentID) is not None:
+                        #if bpy.data.objects[name] != bpy.data.objects[parentID]:
+                        bpy.data.objects[name].parent = bpy.data.objects[self.armatureName]
+                        bpy.data.objects[name].parent_type = 'BONE'
+                        bpy.data.objects[name].parent_bone = parentID
+                else:
+                    if bpy.data.objects.get(parentID) is not None:
+                        if bpy.data.objects[name] != bpy.data.objects[parentID]:
+                            bpy.data.objects[name].parent = bpy.data.objects[parentID]
                   
             loaded_images = []
             

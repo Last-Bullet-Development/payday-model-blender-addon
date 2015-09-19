@@ -1,11 +1,11 @@
 """
-Import/export Payday 2 Model File format files to Blender.
+Import/export PayDay 2 Model File format files to Blender.
 
 """
 
 
 bl_info = {    
-    "name": "Payday Unit Import/\"Export\"",
+    "name": "Payday MODEL Import/\"Export\"",
     "author": "I am not a spy..., Zwagoth, PoueT",
     "version": (0, 1),
     "blender": (2, 68, 0),
@@ -39,11 +39,31 @@ class PD2ModelImporter(bpy.types.Operator):
     filepath = StringProperty(
             subtype='FILE_PATH',
             )
-    filter_glob = StringProperty(default="*.model;*.object;*.scene", options={'HIDDEN'})
+    filter_glob = StringProperty(default="*.model", options={'HIDDEN'})
 
+    
+    assetsPath = StringProperty(
+            name="Extract Path",
+            description="Path to game extract folder.",
+            default="ENTER A PATH",
+            )
+    dllPath = StringProperty(
+            name="Dll Path",
+            description="Path to hash64.dll.",
+            default="ENTER A PATH",
+            )
+    hashlistPath = StringProperty(
+            name="Hashlist Path",
+            description="Path to game hashlist file.",
+            default="ENTER A PATH",
+            )
+    
     def execute(self, context):
         from . import import_pd2model
-        pd2ModelImport = import_pd2model.Pd2ModelImport()
+        
+        keywords = self.as_keywords(ignore=("filter_glob", "directory"))
+        pd2ModelImport = import_pd2model.Pd2ModelImport(**keywords)
+        
         pd2ModelImport.read(self.filepath)
         return {'FINISHED'}
 
@@ -58,8 +78,8 @@ class PD2ModelExporter(bpy.types.Operator, ExportHelper):
     bl_idname = "export_mesh.model"
     bl_label = "Export Payday MODEL"
 
-    #filename_ext = ".model*.object;*.scene"
-    filter_glob = StringProperty(default="*.model*.object;*.scene", options={'HIDDEN'})
+    filename_ext = ".model"
+    filter_glob = StringProperty(default="*.model", options={'HIDDEN'})
 
     apply_modifiers = BoolProperty(
             name="Apply Modifiers",
