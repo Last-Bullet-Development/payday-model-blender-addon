@@ -39,12 +39,7 @@ class Pd2ModelImport:
 	# section_unknown1			      = int('803BA1FF', 16)    # ?   Ex: in str_vehicle_van_player.model
 	# section_unknown2                = int('8C12A526', 16)    # ?   Ex: in str_vehicle_van_player.model
 	
-    hllDll = None
-    hllDllPath = "HashDLLPath"
-    try:
-        hllDll = ctypes.CDLL(hllDllPath)
-    except:
-        raise NameError("Could not load Hash64 dll %s" % hllDllPath)
+    
 	
     def __init__(self):
         #constructor, do initialisation and stuff
@@ -55,16 +50,16 @@ class Pd2ModelImport:
         self.assets_path = 'D:\\PD2 Extract\\'
         #c:\\Program Files (x86)\\Steam\\SteamApps\\common\\PAYDAY The Heist\\assets\\extract\\
         #c:\\Program Files (x86)\\Steam\\SteamApps\\common\\PAYDAY 2\\assets\\extract\\
-        HashlistPath = "Hashlist Path"
-        with open(HashlistPath) as f:
-          lines = f.read().splitlines() 
-          for line in lines:
-              hashcode = int(self.get_hash(str(line)))
-              self.dictionary[hashcode] = line
+        HashlistPath = "C:\\Program Files (x86)\\Steam\\SteamApps\\common\\PAYDAY 2\\pdmodtool\\1.16 Beta\\hashlist"        
+        #with open(HashlistPath) as f:
+          #lines = f.read().splitlines() 
+          #for line in lines:
+             # hashcode = int(self.get_hash(str(line)))
+              #self.dictionary[hashcode] = line
               #print("[" + str(hashcode) + "] = " + self.dictionary[hashcode])
 
-    def read(self, file_path):
-
+    def read(self, file_path, hashlist):
+        self.dictionary = hashlist
         try:
             f = open(file_path, "rb")
         except IOError as e:
@@ -422,6 +417,7 @@ class Pd2ModelImport:
         cur_offset += 12
         items = []
         for x in range(count):
+            print("count read")
             items.append(unpack("<iii", self.rao(cur_offset, 12)))
             cur_offset += 12
         int_count = 64/4
@@ -649,14 +645,4 @@ class Pd2ModelImport:
                   
             mesh.update()
             
-    def get_hash(self, text):
-      str_bytes = bytes(text, 'UTF8')
-
-      self.hllDll.Hash.restype = ctypes.c_ulonglong
-      self.hllDll.Hash.argtypes = [(ctypes.c_ubyte * len(str_bytes)), ctypes.c_ulonglong, ctypes.c_ulonglong]
-
-      dll_p1 = (ctypes.c_ubyte * len(str_bytes)).from_buffer_copy(str_bytes)
-      dll_p2 = ctypes.c_ulonglong (len(dll_p1))
-      dll_p3 = ctypes.c_ulonglong (0)
-      
-      return (self.hllDll.Hash(dll_p1, dll_p2, dll_p3))
+    
