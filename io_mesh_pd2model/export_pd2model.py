@@ -29,10 +29,16 @@ quatBezRotationController_tag = 426984869# QuatBezRotationController
 skinbones_tag = 1707874341 # SkinBones
 bones_tag = 783563895 # Bones
 
+def get_object_id(ObjectIDs, Name):
+    for object_def in ObjectIDS:
+        if object_def[0] == Name:
+            return object_def[1]
+
 def write(filepath, context, hashlist, hash_get):
     #TODO: implement export code
     get_hash = hash_get
-    IDStart = 19000000
+    IDStart = 18000000
+    ObjectIDS = []
     sections = []
     author = "I-need-to-set-up-this-property"
     source_path = "Like-seriously"
@@ -48,11 +54,31 @@ def write(filepath, context, hashlist, hash_get):
     sections.append(AuthorSection(get_hash, context, IDStart, author, source_path))
     
     for ob_main in objects:
+        IDStart += 1
+        ObjectIDS.append((ob_main.name, IDStart))
+    
+    for ob_main in objects:
         if ob_main.type == "EMPTY": # Tag, ID, Size, HashedName
-            IDStart += 1
-            sections.append(Object3DSection(get_hash, ob_main, IDStart))
+            #IDStart += 1
+            ObjectID = get_object_id(ObjectIDS, ob_main.name)
+            parentID = 0
+            if ob_main.parent != None and ob_main.parent.name != None:
+                parentID = get_object_id(ObjectIDS, ob_main.parent.name)
+            sections.append(Object3DSection(get_hash, ob_main, ObjectID, parentID))
+            ObjectIDS.append((ob_main.name, ObjectID))
             print(ob_main.name)
-        
+        if ob_main.type == "MESH":
+            IDStart += 1
+            MatID = IDStart
+            active_mat_section = MaterialSection(get_hash, ob_main.active_material, MatID)
+            IDStart += 1
+            MatGroupID = IDStart
+            sections.append(MaterialGroupSection(get_hash, MatGroupID, [MatID]))
+            sections.append(active_mat_section)
+            ObjectID = get_object_id(ObjectIDS, ob_main.name)
+            sections.append(ModelSection(get_hash, ob_main, ObjectID, get_object_id(ObjectIDS, ob_main.parent.name), MatGroupID))
+            #ObjectIDS.append((ob_main.name, IDStart))
+            print(ob_main.name)
         print(ob_main.name)
         print(ob_main.type)
     
@@ -69,13 +95,32 @@ def write(filepath, context, hashlist, hash_get):
     file.write(file_data)
     file.close()
 
+
+def ModelSection(get_hash, object, ID, ParentID, MatGroupID):
+    object_3d = Object3DSection(get_hash, object, ID, ParentID)
+    content = object_3d[3] + pack("<i", )
+    #content += pack("<Qi", get_hash(object.name), 0)
     
-def Object3DSection(get_hash, object, ID):
+    return [model_data_tag, ID, len(content), content]
+    
+def Object3DSection(get_hash, object, ID, ParentID):
     #Object3Ds[len(Object3Ds) + 1] = {object3D_tag, random.randint(100000000, 400000000), 0, get_hash(ob_main.name)}
     # Count is number of items? So if count == 0 then it should go straight to the mat.scale?
     content = pack("<Qi", get_hash(object.name), 0)
     
     return [object3D_tag, ID, len(content), content]
+    
+def MaterialGroupSection(get_hash, ID, Materials):
+    content = pack("<i", len(Materials))
+    for material in Materials:
+        content += pack("<i", material)
+    
+    return [material_group_tag, ID, len(content), content]
+
+def MaterialSection(get_hash, material, ID):
+    content = pack("<Qi", get_hash(material.name), 0)
+    
+    return [material_tag, ID, len(content), content]
     
 def AuthorSection(get_hash, context, ID, author, source_path):
 
