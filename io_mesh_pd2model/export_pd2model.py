@@ -122,7 +122,14 @@ def write(filepath, context, hashlist, hash_get):
     file.close()
 
 def GeometrySection(get_hash, object, ID):
-    content = pack("<ii", 0, 0) #for count, count2
+    content = pack("<i", len(object.data.vertices)) #for count
+    content += pack("<i", 1) #header count
+    
+    vert_header = pack("<ii", 3, 1)
+    
+    vert_data = string.encode("")
+    for vert in object.data.vertices:
+        vert_data += pack("<fff", vert.co[0], vert.co[1], vert.co[2])
     
     content += pack("<Q", get_hash(object.name + ".Geometry"))
     
