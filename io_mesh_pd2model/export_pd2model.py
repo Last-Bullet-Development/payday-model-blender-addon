@@ -30,14 +30,14 @@ skinbones_tag = 1707874341 # SkinBones
 bones_tag = 783563895 # Bones
 
 def get_object_id(ObjectIDs, Name):
-    for object_def in ObjectIDS:
+    for object_def in ObjectIDs:
         if object_def[0] == Name:
             return object_def[1]
 
 def write(filepath, context, hashlist, hash_get):
     #TODO: implement export code
     get_hash = hash_get
-    IDStart = 18000000
+    IDStart = 120000000
     ObjectIDS = []
     sections = []
     author = "I-need-to-set-up-this-property"
@@ -71,12 +71,38 @@ def write(filepath, context, hashlist, hash_get):
             IDStart += 1
             MatID = IDStart
             active_mat_section = MaterialSection(get_hash, ob_main.active_material, MatID)
+            
             IDStart += 1
             MatGroupID = IDStart
-            sections.append(MaterialGroupSection(get_hash, MatGroupID, [MatID]))
-            sections.append(active_mat_section)
+            material_group_section = MaterialGroupSection(get_hash, MatGroupID, [MatID])
+            
+            IDStart += 1
+            GeometryID = IDStart
+            geometry_section = GeometrySection(get_hash, ob_main, GeometryID)
+            
+            IDStart += 1
+            TopologyID = IDStart
+            topology_section = TopologySection(get_hash, ob_main, TopologyID)
+            
+            IDStart += 1
+            PassthroughGPID = IDStart
+            passthrough_section = PassthroughGPSection(get_hash, PassthroughGPID, GeometryID, TopologyID)
+            
+            IDStart += 1
+            TopologyIPID = IDStart
+            topology_ip_section = TopologyIPSection(get_hash, ob_main, TopologyIPID, TopologyID)
+            
             ObjectID = get_object_id(ObjectIDS, ob_main.name)
-            sections.append(ModelSection(get_hash, ob_main, ObjectID, get_object_id(ObjectIDS, ob_main.parent.name), MatGroupID))
+            model_section = ModelSection(get_hash, ob_main, ObjectID, get_object_id(ObjectIDS, ob_main.parent.name), MatGroupID, PassthroughGPID, TopologyIPID)
+            
+            sections.append(material_group_section)
+            sections.append(active_mat_section)
+            sections.append(model_section)
+            sections.append(geometry_section)
+            sections.append(topology_section)
+            sections.append(passthrough_section)
+            sections.append(topology_ip_section)
+            
             #ObjectIDS.append((ob_main.name, IDStart))
             print(ob_main.name)
         print(ob_main.name)
@@ -89,17 +115,53 @@ def write(filepath, context, hashlist, hash_get):
         total_size += section[2]
         file_body += pack("<III", section[0], section[1], section[2]) + section[3]
         
-    file_data = pack("<III", 4294967295, total_size + 12, len(sections)) + file_body
+    file_data = pack("<III", 4294967295, len(file_body) + 12, len(sections)) + file_body
     
     file = open(filepath, "wb")
     file.write(file_data)
     file.close()
 
-
-def ModelSection(get_hash, object, ID, ParentID, MatGroupID):
+def GeometrySection(get_hash, object, ID):
+    content = pack("<ii", 0, 0) #for count, count2
+    
+    content += pack("<Q", get_hash(object.name + ".Geometry"))
+    
+    return [geometry_tag, ID, len(content), content]
+    
+def TopologySection(get_hash, object, ID):
+    content = pack("<ii", 0, 0)# stuff ~
+    
+    content += pack("<Q", get_hash(object.name + ".Topology")) #Hashname
+    
+    return [topology_tag, ID, len(content), content]
+    
+def PassthroughGPSection(get_hash, ID, GeometryID, TopologyID):
+    content = pack("<ii", GeometryID, TopologyID)
+    
+    return [passthroughGP_tag, ID, len(content), content]
+    
+def TopologyIPSection(get_hash, object, ID, TopologyID):
+    content = pack("<i", TopologyID)
+    
+    return [topologyIP_tag, ID, len(content), content]
+    
+def ModelSection(get_hash, object, ID, ParentID, MatGroupID, PassthroughGPID, TopologyIPID):
     object_3d = Object3DSection(get_hash, object, ID, ParentID)
-    content = object_3d[3] + pack("<i", )
-    #content += pack("<Qi", get_hash(object.name), 0)
+    version = 3
+    content = object_3d[3] + pack("<i", version)
+    content += pack("<ii", PassthroughGPID, TopologyIPID)
+    
+    item_count = 0
+    content += pack("<i", item_count)
+    
+    if item_count > 0:
+        for x in range(item_count):
+            #don't really know what goes on here
+            content += pack("<i", 0)
+            
+    content += pack("<i", MatGroupID)
+    
+    #More stuff~
     
     return [model_data_tag, ID, len(content), content]
     
@@ -107,6 +169,8 @@ def Object3DSection(get_hash, object, ID, ParentID):
     #Object3Ds[len(Object3Ds) + 1] = {object3D_tag, random.randint(100000000, 400000000), 0, get_hash(ob_main.name)}
     # Count is number of items? So if count == 0 then it should go straight to the mat.scale?
     content = pack("<Qi", get_hash(object.name), 0)
+    
+    content += pack("<i", ParentID)
     
     return [object3D_tag, ID, len(content), content]
     
